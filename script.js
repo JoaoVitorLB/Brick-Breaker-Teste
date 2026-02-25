@@ -169,13 +169,30 @@ class Ball {
         this.x += this.speedX;
         this.y += this.speedY;
 
-        if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
-            this.speedX *= -1;
+        // Colisões com paredes (com correção de posição para evitar bugs)
+        // Parede Direita
+        if (this.x + this.radius > canvas.width) {
+            this.x = canvas.width - this.radius; // Reposiciona na borda
+            this.speedX = -Math.abs(this.speedX); // Garante que vá para a esquerda
             createExplosion(this.x, this.y, this.color, 5);
         }
-        if (this.y - this.radius < 0) {
-            this.speedY *= -1;
+        // Parede Esquerda
+        else if (this.x - this.radius < 0) {
+            this.x = this.radius; // Reposiciona na borda
+            this.speedX = Math.abs(this.speedX); // Garante que vá para a direita
             createExplosion(this.x, this.y, this.color, 5);
+        }
+
+        // Teto
+        if (this.y - this.radius < 0) {
+            this.y = this.radius; // Reposiciona na borda
+            this.speedY = Math.abs(this.speedY); // Garante que vá para baixo
+            createExplosion(this.x, this.y, this.color, 5);
+        }
+
+        // Queda (morte)
+        if (this.y + this.radius > canvas.height) {
+            handleLifeLoss();
         }
 
         // Colisão com Paddle
