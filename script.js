@@ -18,15 +18,21 @@ let gameRunning = false;
 let animationId;
 
 // Entidades
-let paddle, ball, bricks, particles;
+let paddle;
+let balls = [];
+let bricks = [];
+let particles = [];
+let powerUps = [];
 
 const COLORS = {
     1: ['#00f2ff', '#0097a7'], // Cyan - 1 hit
     2: ['#7000ff', '#4a00aa'], // Purple - 2 hits
     3: ['#ff007a', '#aa0051'], // Pink - 3 hits
+    4: ['#ff9d00', '#c17700'], // Orange - 4 hits (nova camada)
     paddle: '#ffffff',
     ball: '#ffffff',
-    particle: '#ffffff'
+    powerUpExpand: '#00ff88',
+    powerUpExtra: '#ffdd00'
 };
 
 class Particle {
@@ -57,13 +63,47 @@ class Particle {
     }
 }
 
+class PowerUp {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'expand' ou 'extra'
+        this.width = 30;
+        this.height = 15;
+        this.speed = 3;
+        this.color = type === 'expand' ? COLORS.powerUpExpand : COLORS.powerUpExtra;
+    }
+
+    update() {
+        this.y += this.speed;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        ctx.beginPath();
+        ctx.roundRect(this.x - this.width / 2, this.y - this.height / 2, this.width, this.height, 10);
+        ctx.fill();
+
+        // Ícone simples
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.font = '10px Arial bold';
+        ctx.fillText(this.type === 'expand' ? '↔' : '+●', this.x, this.y + 4);
+        ctx.shadowBlur = 0;
+    }
+}
+
 class Paddle {
     constructor() {
-        this.width = 120;
+        this.baseWidth = 120;
+        this.width = this.baseWidth;
         this.height = 15;
         this.x = canvas.width / 2 - this.width / 2;
         this.y = canvas.height - 40;
         this.color = COLORS.paddle;
+        this.expandTimer = 0;
     }
 
     draw() {
@@ -78,26 +118,33 @@ class Paddle {
 
     update(mouseX) {
         const rect = canvas.getBoundingClientRect();
-        const root = document.documentElement;
-        this.x = mouseX - rect.left - root.scrollLeft - this.width / 2;
+        this.x = mouseX - rect.left - this.width / 2;
 
-        // Limites
         if (this.x < 0) this.x = 0;
         if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+        // Gerenciar tempo da expansão
+        if (this.expandTimer > 0) {
+            this.expandTimer--;
+            if (this.expandTimer <= 0) {
+                this.width = this.baseWidth;
+            }
+        }
+    }
+
+    expand() {
+        this.width = this.baseWidth * 1.6;
+        this.expandTimer = 600; // ~10 segundos a 60fps
     }
 }
 
 class Ball {
-    constructor() {
-        this.reset();
-    }
-
-    reset() {
+    constructor(x, y, speedX, speedY) {
         this.radius = 8;
-        this.x = canvas.width / 2;
-        this.y = canvas.height - 60;
-        this.speedX = (Math.random() - 0.5) * 10;
-        this.speedY = -6;
+        this.x = x || canvas.width / 2;
+        this.y = y || canvas.height - 60;
+        this.speedX = speedX || (Math.random() - 0.5) * 10;
+        this.speedY = speedY || -6;
         this.color = COLORS.ball;
     }
 
@@ -115,7 +162,6 @@ class Ball {
         this.x += this.speedX;
         this.y += this.speedY;
 
-        // Colisões com paredes
         if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
             this.speedX *= -1;
             createExplosion(this.x, this.y, this.color, 5);
@@ -125,37 +171,30 @@ class Ball {
             createExplosion(this.x, this.y, this.color, 5);
         }
 
-        // Queda (morte)
-        if (this.y + this.radius > canvas.height) {
-            handleLifeLoss();
-        }
-
         // Colisão com Paddle
         if (this.y + this.radius > paddle.y &&
             this.y - this.radius < paddle.y + paddle.height &&
             this.x > paddle.x &&
             this.x < paddle.x + paddle.width) {
 
-            // Ângulo baseado no ponto de impacto
             let collidePoint = this.x - (paddle.x + paddle.width / 2);
             collidePoint = collidePoint / (paddle.width / 2);
-            let angle = collidePoint * (Math.PI / 3); // Max 60 graus
+            let angle = collidePoint * (Math.PI / 3);
 
-            this.speedY = -Math.abs(this.speedY) * 1.05; // Aumenta velocidade levemente
+            this.speedY = -Math.abs(this.speedY) * 1.02;
             this.speedX = Math.sin(angle) * 10;
-
-            this.y = paddle.y - this.radius; // Corrigir sobreposição
+            this.y = paddle.y - this.radius;
             createExplosion(this.x, this.y, this.color, 8);
         }
     }
 }
 
 class Brick {
-    constructor(x, y, health) {
+    constructor(x, y, width, height, health) {
         this.x = x;
         this.y = y;
-        this.width = 70;
-        this.height = 25;
+        this.width = width;
+        this.height = height;
         this.health = health;
         this.status = 1;
     }
@@ -163,7 +202,7 @@ class Brick {
     draw() {
         if (this.status === 0) return;
 
-        const colors = COLORS[this.health];
+        const colors = COLORS[this.health] || COLORS[1];
         const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
         gradient.addColorStop(0, colors[0]);
         gradient.addColorStop(1, colors[1]);
@@ -173,8 +212,7 @@ class Brick {
         ctx.roundRect(this.x, this.y, this.width, this.height, 4);
         ctx.fill();
 
-        // Brilho interno
-        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
         ctx.lineWidth = 1;
         ctx.stroke();
     }
@@ -182,17 +220,22 @@ class Brick {
     hit() {
         this.health--;
         score += 100;
-        updateUI();
-        createExplosion(this.x + this.width / 2, this.y + this.height / 2, COLORS[this.health + 1][0], 15);
+        createExplosion(this.x + this.width / 2, this.y + this.height / 2, COLORS[this.health + 1][0], 10);
 
         if (this.health <= 0) {
             this.status = 0;
             score += 500;
+            updateUI();
+
+            // Chance de soltar Power-up (15%)
+            if (Math.random() < 0.15) {
+                const type = Math.random() < 0.5 ? 'expand' : 'extra';
+                powerUps.push(new PowerUp(this.x + this.width / 2, this.y + this.height / 2, type));
+            }
         }
     }
 }
 
-// Funções Auxiliares
 function createExplosion(x, y, color, count) {
     for (let i = 0; i < count; i++) {
         particles.push(new Particle(x, y, color));
@@ -201,22 +244,26 @@ function createExplosion(x, y, color, count) {
 
 function initBricks() {
     bricks = [];
-    const rows = 5;
-    const cols = 9;
-    const padding = 10;
-    const offsetTop = 80;
-    const offsetLeft = 45;
+    const cols = 14; // Mais colunas
+    const rows = 9;  // Mais linhas
+    const padding = 4;
+    const offsetTop = 60;
+
+    // Calcula largura exata para ocupar o espaço inteiro (800px)
+    const brickWidth = (canvas.width - (cols + 1) * padding) / cols;
+    const brickHeight = 20;
 
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-            const bx = (c * (70 + padding)) + offsetLeft;
-            const by = (r * (25 + padding)) + offsetTop;
-            // Cores por linha: 2 linhas de 3 hits, 2 de 2 hits, 1 de 1 hit
-            let health = 1;
-            if (r < 2) health = 3;
-            else if (r < 4) health = 2;
+            const bx = c * (brickWidth + padding) + padding;
+            const by = r * (brickHeight + padding) + offsetTop;
 
-            bricks.push(new Brick(bx, by, health));
+            let health = 1;
+            if (r < 2) health = 4;
+            else if (r < 4) health = 3;
+            else if (r < 7) health = 2;
+
+            bricks.push(new Brick(bx, by, brickWidth, brickHeight, health));
         }
     }
 }
@@ -231,22 +278,6 @@ function updateUI() {
     }
 }
 
-function handleLifeLoss() {
-    lives--;
-    updateUI();
-    if (lives <= 0) {
-        endGame('GAME OVER', 'Sua persistência foi notável, mas os blocos venceram.');
-    } else {
-        ball.reset();
-    }
-}
-
-function checkWin() {
-    if (bricks.every(b => b.status === 0)) {
-        endGame('VITÓRIA!', 'Você destruiu todos os núcleos de energia!');
-    }
-}
-
 function endGame(title, msg) {
     gameRunning = false;
     cancelAnimationFrame(animationId);
@@ -257,7 +288,8 @@ function endGame(title, msg) {
 
 function init() {
     paddle = new Paddle();
-    ball = new Ball();
+    balls = [new Ball()];
+    powerUps = [];
     particles = [];
     initBricks();
     score = 0;
@@ -270,28 +302,74 @@ function gameLoop() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Update & Draw
     paddle.draw();
-    ball.update();
-    ball.draw();
 
-    bricks.forEach(brick => {
-        if (brick.status === 1) {
-            brick.draw();
+    // Bolas
+    for (let i = balls.length - 1; i >= 0; i--) {
+        const ball = balls[i];
+        ball.update();
+        ball.draw();
 
-            // Colisão Ball vs Brick
-            if (ball.x + ball.radius > brick.x &&
-                ball.x - ball.radius < brick.x + brick.width &&
-                ball.y + ball.radius > brick.y &&
-                ball.y - ball.radius < brick.y + brick.height) {
-
-                brick.hit();
-                ball.speedY *= -1;
-                checkWin();
+        // Verificar se a bola caiu
+        if (ball.y + ball.radius > canvas.height) {
+            balls.splice(i, 1);
+            if (balls.length === 0) {
+                lives--;
+                updateUI();
+                if (lives <= 0) {
+                    endGame('GAME OVER', 'Sua persistência foi notável.');
+                } else {
+                    balls.push(new Ball());
+                }
             }
         }
-    });
 
+        // Colisão com Blocos
+        bricks.forEach(brick => {
+            if (brick.status === 1) {
+                if (ball.x + ball.radius > brick.x &&
+                    ball.x - ball.radius < brick.x + brick.width &&
+                    ball.y + ball.radius > brick.y &&
+                    ball.y - ball.radius < brick.y + brick.height) {
+
+                    brick.hit();
+                    ball.speedY *= -1;
+
+                    if (bricks.every(b => b.status === 0)) {
+                        endGame('VITÓRIA!', 'Você destruiu tudo!');
+                    }
+                }
+            }
+        });
+    }
+
+    // Power-ups
+    for (let i = powerUps.length - 1; i >= 0; i--) {
+        const p = powerUps[i];
+        p.update();
+        p.draw();
+
+        // Colisão com Paddle
+        if (p.y + p.height / 2 > paddle.y &&
+            p.y - p.height / 2 < paddle.y + paddle.height &&
+            p.x > paddle.x &&
+            p.x < paddle.x + paddle.width) {
+
+            if (p.type === 'expand') paddle.expand();
+            if (p.type === 'extra') balls.push(new Ball(paddle.x + paddle.width / 2, paddle.y - 10));
+
+            powerUps.splice(i, 1);
+            score += 200;
+            updateUI();
+        } else if (p.y > canvas.height) {
+            powerUps.splice(i, 1);
+        }
+    }
+
+    // Tijolos
+    bricks.forEach(brick => brick.draw());
+
+    // Partículas
     particles.forEach((p, index) => {
         p.update();
         p.draw();
@@ -301,7 +379,6 @@ function gameLoop() {
     animationId = requestAnimationFrame(gameLoop);
 }
 
-// Event Listeners
 window.addEventListener('mousemove', (e) => {
     if (gameRunning) paddle.update(e.clientX);
 });
@@ -313,5 +390,4 @@ startBtn.addEventListener('click', () => {
     gameLoop();
 });
 
-// Inicializar UI vazia
 updateUI();
