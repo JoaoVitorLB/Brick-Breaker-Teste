@@ -104,6 +104,7 @@ class Paddle {
         this.y = canvas.height - 40;
         this.color = COLORS.paddle;
         this.expandTimer = 0;
+        this.speed = 10; // Velocidade da paleta
     }
 
     draw() {
@@ -116,10 +117,16 @@ class Paddle {
         ctx.shadowBlur = 0;
     }
 
-    update(mouseX) {
-        const rect = canvas.getBoundingClientRect();
-        this.x = mouseX - rect.left - this.width / 2;
+    update() {
+        // Movimento por teclas
+        if (keys.a || keys.A || keys.ArrowLeft) {
+            this.x -= this.speed;
+        }
+        if (keys.d || keys.D || keys.ArrowRight) {
+            this.x += this.speed;
+        }
 
+        // Limites do canvas
         if (this.x < 0) this.x = 0;
         if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
 
@@ -297,11 +304,23 @@ function init() {
     updateUI();
 }
 
+// Sistema de Teclas
+let keys = {};
+
+window.addEventListener('keydown', (e) => {
+    keys[e.key] = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    keys[e.key] = false;
+});
+
 function gameLoop() {
     if (!gameRunning) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    paddle.update(); // Atualiza movimento por teclado
     paddle.draw();
 
     // Bolas
@@ -378,10 +397,6 @@ function gameLoop() {
 
     animationId = requestAnimationFrame(gameLoop);
 }
-
-window.addEventListener('mousemove', (e) => {
-    if (gameRunning) paddle.update(e.clientX);
-});
 
 startBtn.addEventListener('click', () => {
     overlay.classList.add('hidden');
