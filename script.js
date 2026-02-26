@@ -344,21 +344,28 @@ function gameLoop() {
         ball.draw();
 
         // Verificar se a bola caiu
-        if (ball.y + ball.radius > canvas.height) {
+        if (ball.y - ball.radius > canvas.height) {
             balls.splice(i, 1);
+
+            // Se foi a última bola a cair do nível
             if (balls.length === 0) {
                 lives--;
                 updateUI();
+
                 if (lives <= 0) {
                     endGame('GAME OVER', 'Sua persistência foi notável.');
+                    return; // Para o loop aqui
                 } else {
+                    // Cria uma nova bola na posição inicial
                     balls.push(new Ball());
                 }
             }
+            continue; // Pula a colisão de tijolos para esta bola que já saiu
         }
 
         // Colisão com Blocos
-        bricks.forEach(brick => {
+        for (let j = bricks.length - 1; j >= 0; j--) {
+            const brick = bricks[j];
             if (brick.status === 1) {
                 if (ball.x + ball.radius > brick.x &&
                     ball.x - ball.radius < brick.x + brick.width &&
@@ -370,10 +377,12 @@ function gameLoop() {
 
                     if (bricks.every(b => b.status === 0)) {
                         endGame('VITÓRIA!', 'Você destruiu tudo!');
+                        return;
                     }
+                    break; // Uma bola só atinge um tijolo por frame
                 }
             }
-        });
+        }
     }
 
     // Power-ups
