@@ -190,10 +190,7 @@ class Ball {
             createExplosion(this.x, this.y, this.color, 5);
         }
 
-        // Queda (morte)
-        if (this.y + this.radius > canvas.height) {
-            handleLifeLoss();
-        }
+
 
         // Colisão com Paddle
         if (this.y + this.radius > paddle.y &&
