@@ -308,6 +308,12 @@ function endGame(title, msg) {
 }
 
 function init() {
+    // Para qualquer loop anterior
+    if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+    }
+
     paddle = new Paddle();
     balls = [new Ball()];
     powerUps = [];
@@ -315,6 +321,7 @@ function init() {
     initBricks();
     score = 0;
     lives = 3;
+    gameRunning = true;
     updateUI();
 }
 
@@ -363,7 +370,7 @@ function gameLoop() {
             continue; // Pula a colisão de tijolos para esta bola que já saiu
         }
 
-        // Colisão com Blocos
+        // Colisão com Blocos (com correção de posição)
         for (let j = bricks.length - 1; j >= 0; j--) {
             const brick = bricks[j];
             if (brick.status === 1) {
@@ -373,13 +380,26 @@ function gameLoop() {
                     ball.y - ball.radius < brick.y + brick.height) {
 
                     brick.hit();
-                    ball.speedY *= -1;
+
+                    // Lógica de Rebatida com Correção de Posição
+                    const prevBallY = ball.y - ball.speedY;
+                    if (prevBallY + ball.radius <= brick.y || prevBallY - ball.radius >= brick.y + brick.height) {
+                        ball.speedY *= -1;
+                        // Empurra para fora verticalmente
+                        if (ball.speedY < 0) ball.y = brick.y + brick.height + ball.radius;
+                        else ball.y = brick.y - ball.radius;
+                    } else {
+                        ball.speedX *= -1;
+                        // Empurra para fora horizontalmente
+                        if (ball.speedX < 0) ball.x = brick.x + brick.width + ball.radius;
+                        else ball.x = brick.x - ball.radius;
+                    }
 
                     if (bricks.every(b => b.status === 0)) {
                         endGame('VITÓRIA!', 'Você destruiu tudo!');
                         return;
                     }
-                    break; // Uma bola só atinge um tijolo por frame
+                    break;
                 }
             }
         }
@@ -424,7 +444,6 @@ function gameLoop() {
 startBtn.addEventListener('click', () => {
     overlay.classList.add('hidden');
     init();
-    gameRunning = true;
     gameLoop();
 });
 
